@@ -33,7 +33,7 @@ st.markdown("""
         padding: 15px;
         border-radius: 12px;
         border: 1px solid #2a2a2a;
-        margin-bottom: 10px;
+        margin-bottom: 5px;
     }
     .spotify-btn {
         display: inline-flex;
@@ -298,7 +298,6 @@ if st.session_state.filtro_aba == "álbum do dia":
         tot_p = st.number_input("total de músicas", 1, 30, int(float(album_alvo.get('Total_Tracks', 10))), key="pop_tot")
         lik_p = st.number_input("músicas que gostou", 0, tot_p, int(float(album_alvo.get('Liked_Tracks', 0))), key="pop_lik")
         
-        # Seleção de Coleção
         colecao_atual = str(album_alvo.get('Colecao', 'Não')).strip().capitalize()
         idx_col_pop = 0 if colecao_atual in ['Sim', 'S', 'True', 'Yes'] else 1
         pop_colecao = st.selectbox("minha coleção", ["Sim", "Não"], index=idx_col_pop, key="pop_colecao_select")
@@ -396,6 +395,88 @@ elif st.session_state.filtro_aba == "histórico":
                             <span style="color: #1db954; font-size: 12px;">Capa: {c_val}/5 | ⭐ Nota Final: {str_nota}</span>
                         </div>
                     """, unsafe_allow_html=True)
+                    
+                    if st.button("editar / ver detalhes", key=f"btn_hist_{flat_idx}"):
+                        if st.session_state.get('album_editando') == r['Album']:
+                            del st.session_state.album_editando
+                        else:
+                            st.session_state.album_editando = r['Album']
+                        st.rerun()
+
+        for col_idx in range(4):
+            flat_idx = row_idx + col_idx
+            if flat_idx < len(lista_discos_hist):
+                r = lista_discos_hist[flat_idx]
+                if st.session_state.get('album_editando') == r['Album']:
+                    st.markdown("---")
+                    with st.container():
+                        st.markdown(f"✏️ **Editando: {r['Album']} ({r['Artist']})**")
+                        
+                        df_fresh = pd.read_csv("albums.csv", dtype=str)
+                        match_idx = df_fresh[(df_fresh['Album'] == r['Album']) & (df_fresh['Artist'] == r['Artist'])].index
+                        if len(match_idx) > 0:
+                            sel_idx = match_idx[0]
+                            row_sel = df_fresh.loc[sel_idx]
+                        else:
+                            row_sel = r
+                            sel_idx = 0
+                        
+                        c_ed1, c_ed2 = st.columns(2)
+                        with c_ed1:
+                            cap = buscar_capa_album(str(row_sel['Artist']), str(row_sel['Album']))
+                            if cap:
+                                st.image(cap, width=220)
+                            url_sp = obter_link_spotify(row_sel)
+                            st.markdown(f'<a href="{url_sp}" target="_blank" class="spotify-btn">🎧 ouvir no spotify</a>', unsafe_allow_html=True)
+                        with c_ed2:
+                            raw_c = row_sel.get('Cover_Rating', '0')
+                            c_salva = int(float(raw_c)) if pd.notna(raw_c) and str(raw_c).strip() != '' and str(raw_c).lower() != 'nan' else 0
+                            st.markdown(f"**Nota atual da capa:** {render_estrelas(c_salva)}")
+                            st.markdown("alterar nota da capa (1 a 5)")
+                            fb_ed = st.feedback("stars", key=f"hist_c_{flat_idx}")
+                            
+                            try:
+                                tot_val = int(float(row_sel.get('Total_Tracks', 10)))
+                            except:
+                                tot_val = 10
+                            tot_f = st.number_input("total de músicas", 1, 30, tot_val, key=f"hist_tot_{flat_idx}")
+                            
+                            try:
+                                lik_val = int(float(row_sel.get('Liked_Tracks', 0)))
+                            except:
+                                lik_val = 0
+                            lik_f = st.number_input("músicas que gostou", 0, tot_f, lik_val, key=f"hist_lik_{flat_idx}")
+                            
+                            fav_val = str(row_sel.get('Favorite_Track', ''))
+                            if fav_val.lower() == 'nan': fav_val = ''
+                            fav_m = st.text_input("música favorita", value=fav_val, key=f"hist_f_{flat_idx}")
+                            
+                            colecao_atual = str(row_sel.get('Colecao', 'Não')).strip().capitalize()
+                            idx_col = 0 if colecao_atual in ['Sim', 'S', 'True', 'Yes'] else 1
+                            nova_colecao = st.selectbox("minha coleção", ["Sim", "Não"], index=idx_col, key=f"hist_s_{flat_idx}")
+                            
+                            if st.button("salvar alterações", type="primary", key=f"hist_save_{flat_idx}"):
+                                df_all = pd.read_csv("albums.csv", dtype=str)
+                                m_idx = df_all[(df_all['Album'] == str(r['Album'])) & (df_all['Artist'] == str(r['Artist']))].index
+                                if len(m_idx) > 0:
+                                    idx_s = m_idx[0]
+                                    if fb_ed is not None:
+                                        df_all.loc[idx_s, 'Cover_Rating'] = str(int(fb_ed + 1))
+                                    df_all.loc[idx_s, 'Total_Tracks'] = str(int(tot_f))
+                                    df_all.loc[idx_s, 'Liked_Tracks'] = str(int(lik_f))
+                                    df_all.loc[idx_s, 'Favorite_Track'] = str(fav_m)
+                                    df_all.loc[idx_s, 'Colecao'] = str(nova_colecao)
+                                    df_all.to_csv("albums.csv", index=False)
+                                    st.success("Salvo com sucesso!")
+                                    del st.session_state.album_editando
+                                    st.rerun()
+                                else:
+                                    st.error("Erro ao localizar álbum para salvar.")
+                                    
+                            if st.button("fechar editor", key=f"hist_close_{flat_idx}"):
+                                del st.session_state.album_editando
+                                st.rerun()
+                    st.markdown("---")
 
 # 3. ABA: MINHA COLEÇÃO
 elif st.session_state.filtro_aba == "minha coleção":
@@ -432,6 +513,88 @@ elif st.session_state.filtro_aba == "minha coleção":
                                 <span style="color: #1db954; font-size: 12px;">Capa: {c_val}/5 | ⭐ Nota Final: {str_nota}</span>
                             </div>
                         """, unsafe_allow_html=True)
+                        
+                        if st.button("editar / ver detalhes", key=f"btn_col_{flat_idx}"):
+                            if st.session_state.get('album_editando') == r['Album']:
+                                del st.session_state.album_editando
+                            else:
+                                st.session_state.album_editando = r['Album']
+                            st.rerun()
+
+            for col_idx in range(4):
+                flat_idx = row_idx + col_idx
+                if flat_idx < len(lista_discos):
+                    r = lista_discos[flat_idx]
+                    if st.session_state.get('album_editando') == r['Album']:
+                        st.markdown("---")
+                        with st.container():
+                            st.markdown(f"✏️ **Editando: {r['Album']} ({r['Artist']})**")
+                            
+                            df_fresh = pd.read_csv("albums.csv", dtype=str)
+                            match_idx = df_fresh[(df_fresh['Album'] == r['Album']) & (df_fresh['Artist'] == r['Artist'])].index
+                            if len(match_idx) > 0:
+                                sel_idx = match_idx[0]
+                                row_sel = df_fresh.loc[sel_idx]
+                            else:
+                                row_sel = r
+                                sel_idx = 0
+                            
+                            c_ed1, c_ed2 = st.columns(2)
+                            with c_ed1:
+                                cap = buscar_capa_album(str(row_sel['Artist']), str(row_sel['Album']))
+                                if cap:
+                                    st.image(cap, width=220)
+                                url_sp = obter_link_spotify(row_sel)
+                                st.markdown(f'<a href="{url_sp}" target="_blank" class="spotify-btn">🎧 ouvir no spotify</a>', unsafe_allow_html=True)
+                            with c_ed2:
+                                raw_c = row_sel.get('Cover_Rating', '0')
+                                c_salva = int(float(raw_c)) if pd.notna(raw_c) and str(raw_c).strip() != '' and str(raw_c).lower() != 'nan' else 0
+                                st.markdown(f"**Nota atual da capa:** {render_estrelas(c_salva)}")
+                                st.markdown("alterar nota da capa (1 a 5)")
+                                fb_ed = st.feedback("stars", key=f"col_c_{flat_idx}")
+                                
+                                try:
+                                    tot_val = int(float(row_sel.get('Total_Tracks', 10)))
+                                except:
+                                    tot_val = 10
+                                tot_f = st.number_input("total de músicas", 1, 30, tot_val, key=f"col_tot_{flat_idx}")
+                                
+                                try:
+                                    lik_val = int(float(row_sel.get('Liked_Tracks', 0)))
+                                except:
+                                    lik_val = 0
+                                lik_f = st.number_input("músicas que gostou", 0, tot_f, lik_val, key=f"col_lik_{flat_idx}")
+                                
+                                fav_val = str(row_sel.get('Favorite_Track', ''))
+                                if fav_val.lower() == 'nan': fav_val = ''
+                                fav_m = st.text_input("música favorita", value=fav_val, key=f"col_f_{flat_idx}")
+                                
+                                colecao_atual = str(row_sel.get('Colecao', 'Não')).strip().capitalize()
+                                idx_col = 0 if colecao_atual in ['Sim', 'S', 'True', 'Yes'] else 1
+                                nova_colecao = st.selectbox("minha coleção", ["Sim", "Não"], index=idx_col, key=f"col_s_{flat_idx}")
+                                
+                                if st.button("salvar alterações", type="primary", key=f"col_save_{flat_idx}"):
+                                    df_all = pd.read_csv("albums.csv", dtype=str)
+                                    m_idx = df_all[(df_all['Album'] == str(r['Album'])) & (df_all['Artist'] == str(r['Artist']))].index
+                                    if len(m_idx) > 0:
+                                        idx_s = m_idx[0]
+                                        if fb_ed is not None:
+                                            df_all.loc[idx_s, 'Cover_Rating'] = str(int(fb_ed + 1))
+                                        df_all.loc[idx_s, 'Total_Tracks'] = str(int(tot_f))
+                                        df_all.loc[idx_s, 'Liked_Tracks'] = str(int(lik_f))
+                                        df_all.loc[idx_s, 'Favorite_Track'] = str(fav_m)
+                                        df_all.loc[idx_s, 'Colecao'] = str(nova_colecao)
+                                        df_all.to_csv("albums.csv", index=False)
+                                        st.success("Salvo com sucesso!")
+                                        del st.session_state.album_editando
+                                        st.rerun()
+                                    else:
+                                        st.error("Erro ao localizar álbum para salvar.")
+                                        
+                                if st.button("fechar editor", key=f"col_close_{flat_idx}"):
+                                    del st.session_state.album_editando
+                                    st.rerun()
+                        st.markdown("---")
 
 # 4. ABA: AVALIAR DEPOIS
 elif st.session_state.filtro_aba == "avaliar depois":
