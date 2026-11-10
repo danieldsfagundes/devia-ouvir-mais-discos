@@ -458,10 +458,6 @@ elif st.session_state.filtro_aba == "minhas avaliações":
                                 lik_val = int(float(row_sel.get('Liked_Tracks', 0))) if pd.notna(row_sel.get('Liked_Tracks')) else 0
                                 lik_f = st.number_input("músicas que gostou", 0, tot_f, lik_val, key=f"hist_lik_{flat_idx}")
                                 
-                                fav_val = str(row_sel.get('Favorite_Track', ''))
-                                if fav_val.lower() == 'nan': fav_val = ''
-                                fav_m = st.text_input("música favorita", value=fav_val, key=f"hist_f_{flat_idx}")
-                                
                                 colecao_atual = str(row_sel.get('Colecao', 'Não')).strip().capitalize()
                                 idx_col = 0 if colecao_atual in ['Sim', 'S', 'True', 'Yes'] else 1
                                 nova_colecao = st.selectbox("minha coleção", ["Sim", "Não"], index=idx_col, key=f"hist_s_{flat_idx}")
@@ -475,7 +471,6 @@ elif st.session_state.filtro_aba == "minhas avaliações":
                                             df_all.loc[idx_s, 'Cover_Rating'] = str(int(fb_ed + 1))
                                         df_all.loc[idx_s, 'Total_Tracks'] = str(int(tot_f))
                                         df_all.loc[idx_s, 'Liked_Tracks'] = str(int(lik_f))
-                                        df_all.loc[idx_s, 'Favorite_Track'] = str(fav_m)
                                         df_all.loc[idx_s, 'Colecao'] = str(nova_colecao)
                                         df_all.to_csv("albums.csv", index=False)
                                         st.success("Salvo com sucesso!")
@@ -562,10 +557,6 @@ elif st.session_state.filtro_aba == "minha coleção":
                                 lik_val = int(float(row_sel.get('Liked_Tracks', 0))) if pd.notna(row_sel.get('Liked_Tracks')) else 0
                                 lik_f = st.number_input("músicas que gostou", 0, tot_f, lik_val, key=f"col_lik_{flat_idx}")
                                 
-                                fav_val = str(row_sel.get('Favorite_Track', ''))
-                                if fav_val.lower() == 'nan': fav_val = ''
-                                fav_m = st.text_input("música favorita", value=fav_val, key=f"col_f_{flat_idx}")
-                                
                                 colecao_atual = str(row_sel.get('Colecao', 'Não')).strip().capitalize()
                                 idx_col = 0 if colecao_atual in ['Sim', 'S', 'True', 'Yes'] else 1
                                 nova_colecao = st.selectbox("minha coleção", ["Sim", "Não"], index=idx_col, key=f"col_s_{flat_idx}")
@@ -579,7 +570,6 @@ elif st.session_state.filtro_aba == "minha coleção":
                                             df_all.loc[idx_s, 'Cover_Rating'] = str(int(fb_ed + 1))
                                         df_all.loc[idx_s, 'Total_Tracks'] = str(int(tot_f))
                                         df_all.loc[idx_s, 'Liked_Tracks'] = str(int(lik_f))
-                                        df_all.loc[idx_s, 'Favorite_Track'] = str(fav_m)
                                         df_all.loc[idx_s, 'Colecao'] = str(nova_colecao)
                                         df_all.to_csv("albums.csv", index=False)
                                         st.success("Salvo com sucesso!")
@@ -608,15 +598,14 @@ elif st.session_state.filtro_aba == "avaliar depois":
                     <span style="color: #ccc; font-size: 13px;">📅 {int(r['Released']) if pd.notna(r['Released']) else ''} | {r.get('Country', 'Brasil')}</span>
                 </div>
             """, unsafe_allow_html=True)
+            
             col_ad1, col_ad2 = st.columns(2)
             with col_ad1:
                 if st.button("🎵 Avaliar agora", key=f"btn_ev_dep_{idx}0"):
-                    df_all = pd.read_csv("albums.csv", dtype=str)
-                    m_idx = df_all[(df_all['Album'] == str(r['Album'])) & (df_all['Artist'] == str(r['Artist']))].index
-                    if len(m_idx) > 0:
-                        df_all.loc[m_idx[0], 'Status'] = 'Pendente'
-                        df_all.to_csv("albums.csv", index=False)
-                    st.session_state.filtro_aba = "álbum do dia"
+                    if st.session_state.get('album_avaliando_direto') == r['Album']:
+                        del st.session_state.album_avaliando_direto
+                    else:
+                        st.session_state.album_avaliando_direto = r['Album']
                     st.rerun()
             with col_ad2:
                 if st.button("❌ Não quero avaliar", key=f"btn_ev_dep_{idx}1"):
@@ -626,6 +615,59 @@ elif st.session_state.filtro_aba == "avaliar depois":
                         df_all.loc[m_idx[0], 'Status'] = 'Não Avaliado'
                         df_all.to_csv("albums.csv", index=False)
                     st.rerun()
+                    
+            if st.session_state.get('album_avaliando_direto') == r['Album']:
+                st.markdown("---")
+                with st.container():
+                    st.markdown(f"✏️ **Avaliando diretamente: {r['Album']} ({r['Artist']})**")
+                    df_fresh = pd.read_csv("albums.csv", dtype=str)
+                    match_idx = df_fresh[(df_fresh['Album'] == r['Album']) & (df_fresh['Artist'] == r['Artist'])].index
+                    row_sel = df_fresh.loc[match_idx[0]] if len(match_idx) > 0 else r
+                    
+                    c_ed1, c_ed2 = st.columns(2)
+                    with c_ed1:
+                        cap = buscar_capa_album(str(row_sel['Artist']), str(row_sel['Album']))
+                        if cap:
+                            st.image(cap, width=220)
+                        url_sp = obter_link_spotify(row_sel)
+                        st.markdown(f'<a href="{url_sp}" target="_blank" class="spotify-btn">🎧 ouvir no spotify</a>', unsafe_allow_html=True)
+                    with c_ed2:
+                        raw_c = row_sel.get('Cover_Rating', '0')
+                        c_salva = int(float(raw_c)) if pd.notna(raw_c) and str(raw_c).strip() != '' and str(raw_c).lower() != 'nan' else 0
+                        st.markdown(f"**Nota atual da capa:** {render_estrelas(c_salva)}")
+                        st.markdown("alterar nota da capa (1 a 5)")
+                        fb_ed = st.feedback("stars", key=f"direto_c_{idx}")
+                        
+                        tot_val = int(float(row_sel.get('Total_Tracks', 10))) if pd.notna(row_sel.get('Total_Tracks')) else 10
+                        tot_f = st.number_input("total de músicas", 1, 30, tot_val, key=f"direto_tot_{idx}")
+                        
+                        lik_val = int(float(row_sel.get('Liked_Tracks', 0))) if pd.notna(row_sel.get('Liked_Tracks')) else 0
+                        lik_f = st.number_input("músicas que gostou", 0, tot_f, lik_val, key=f"direto_lik_{idx}")
+                        
+                        colecao_atual = str(row_sel.get('Colecao', 'Não')).strip().capitalize()
+                        idx_col = 0 if colecao_atual in ['Sim', 'S', 'True', 'Yes'] else 1
+                        nova_colecao = st.selectbox("minha coleção", ["Sim", "Não"], index=idx_col, key=f"direto_s_{idx}")
+                        
+                        if st.button("salvar audição", type="primary", key=f"direto_save_{idx}"):
+                            df_all = pd.read_csv("albums.csv", dtype=str)
+                            m_idx = df_all[(df_all['Album'] == str(r['Album'])) & (df_all['Artist'] == str(r['Artist']))].index
+                            if len(m_idx) > 0:
+                                idx_s = m_idx[0]
+                                if fb_ed is not None:
+                                    df_all.loc[idx_s, 'Cover_Rating'] = str(int(fb_ed + 1))
+                                df_all.loc[idx_s, 'Total_Tracks'] = str(int(tot_f))
+                                df_all.loc[idx_s, 'Liked_Tracks'] = str(int(lik_f))
+                                df_all.loc[idx_s, 'Colecao'] = str(nova_colecao)
+                                df_all.loc[idx_s, 'Status'] = 'Avaliado'  # Vai direto para avaliados!
+                                df_all.to_csv("albums.csv", index=False)
+                                st.success("Avaliação salva com sucesso! Movido para 'Minhas Avaliações'.")
+                                del st.session_state.album_avaliando_direto
+                                st.rerun()
+                                
+                        if st.button("fechar", key=f"direto_close_{idx}"):
+                            del st.session_state.album_avaliando_direto
+                            st.rerun()
+                st.markdown("---")
 
 # 5. ABA: NÃO AVALIADOS
 elif st.session_state.filtro_aba == "não avaliados":
@@ -752,10 +794,6 @@ elif st.session_state.filtro_aba == "estatísticas":
                                 lik_val = int(float(row_sel.get('Liked_Tracks', 0))) if pd.notna(row_sel.get('Liked_Tracks')) else 0
                                 lik_f = st.number_input("músicas que gostou", 0, tot_f, lik_val, key=f"geral_lik_{flat_idx}")
                                 
-                                fav_val = str(row_sel.get('Favorite_Track', ''))
-                                if fav_val.lower() == 'nan': fav_val = ''
-                                fav_m = st.text_input("música favorita", value=fav_val, key=f"geral_f_{flat_idx}")
-                                
                                 colecao_atual = str(row_sel.get('Colecao', 'Não')).strip().capitalize()
                                 idx_col = 0 if colecao_atual in ['Sim', 'S', 'True', 'Yes'] else 1
                                 nova_colecao = st.selectbox("minha coleção", ["Sim", "Não"], index=idx_col, key=f"geral_s_{flat_idx}")
@@ -769,7 +807,6 @@ elif st.session_state.filtro_aba == "estatísticas":
                                             df_all.loc[idx_s, 'Cover_Rating'] = str(int(fb_ed + 1))
                                         df_all.loc[idx_s, 'Total_Tracks'] = str(int(tot_f))
                                         df_all.loc[idx_s, 'Liked_Tracks'] = str(int(lik_f))
-                                        df_all.loc[idx_s, 'Favorite_Track'] = str(fav_m)
                                         df_all.loc[idx_s, 'Colecao'] = str(nova_colecao)
                                         df_all.to_csv("albums.csv", index=False)
                                         st.success("Salvo com sucesso!")
@@ -801,7 +838,6 @@ elif st.session_state.filtro_aba == "inserir manualmente":
             m_tot = st.number_input("total de músicas", 1, 30, 10)
         with c_m2:
             m_lik = st.number_input("músicas que gostou", 0, m_tot, 0)
-            m_fav = st.text_input("música favorita")
             
         if st.form_submit_button("adicionar à coleção"):
             df_all = pd.read_csv("albums.csv", dtype=str)
@@ -815,7 +851,7 @@ elif st.session_state.filtro_aba == "inserir manualmente":
                 'Cover_Rating': str(int(m_capa)),
                 'Total_Tracks': str(int(m_tot)),
                 'Liked_Tracks': str(int(m_lik)),
-                'Favorite_Track': str(m_fav),
+                'Favorite_Track': '',
                 'My_Review': '',
                 'Status': 'Pendente',
                 'Ultima_Audicao': ''
