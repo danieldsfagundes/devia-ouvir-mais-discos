@@ -2,8 +2,8 @@ import streamlit as st
 import pandas as pd
 import datetime
 import urllib.parse
+import os
 import requests
-from streamlit_gsheets import GSheetsConnection
 
 st.set_page_config(
     page_title="devia ouvir mais discos", 
@@ -12,7 +12,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Estilização CSS personalizada (Dark Mode Vinil)
 st.markdown("""
     <style>
     .main {
@@ -65,18 +64,16 @@ st.markdown("<h1 style='color: #ffffff; font-weight: 800;'>devia ouvir mais disc
 st.caption("Ouvindo, explorando e avaliando discos em toda a sua arte.")
 
 MAPA_ISO = {
-    "Brasil": "br", "Brazil": "br",
-    "Estados Unidos": "us", "Eua": "us", "United States": "us",
-    "Reino Unido": "gb", "Inglaterra": "gb", "United Kingdom": "gb",
-    "França": "fr", "France": "fr", "Argentina": "ar", "Cuba": "cu",
-    "México": "mx", "Mexico": "mx", "Chile": "cl", "Colômbia": "co",
-    "Panamá": "pa", "Puerto Rico": "pr", "República Dominicana": "do",
-    "Perú": "pe", "Peru": "pe", "Costa Rica": "cr", "Venezuela": "ve",
-    "Bolívia": "bo", "Uruguay": "uy", "Uruguai": "uy", "Guatemala": "gt",
+    "Brasil": "br", "Brazil": "br", "Estados Unidos": "us", "Eua": "us", "United States": "us",
+    "Reino Unido": "gb", "Inglaterra": "gb", "United Kingdom": "gb", "França": "fr", "France": "fr",
+    "Argentina": "ar", "Cuba": "cu", "México": "mx", "Mexico": "mx", "Chile": "cl",
+    "Colômbia": "co", "Colombia": "co", "Panamá": "pa", "Puerto Rico": "pr",
+    "República Dominicana": "do", "Perú": "pe", "Peru": "pe", "Costa Rica": "cr",
+    "Venezuela": "ve", "Bolívia": "bo", "Uruguay": "uy", "Uruguai": "uy", "Guatemala": "gt",
     "El Salvador": "sv", "Paraguay": "py", "Ecuador": "ec", "Nicaragua": "ni",
-    "Honduras": "hn", "España": "es", "Espanha": "es", "Spain": "es",
-    "Itália": "it", "Italia": "it", "Italy": "it", "Portugal": "pt",
-    "Japão": "jp", "Japan": "jp", "Jamaica": "jm", "Canadá": "ca", "Alemanha": "de"
+    "Honduras": "hn", "España": "es", "Espanha": "es", "Spain": "es", "Itália": "it",
+    "Italia": "it", "Italy": "it", "Portugal": "pt", "Japão": "jp", "Japan": "jp",
+    "Jamaica": "jm", "Canadá": "ca", "Alemanha": "de"
 }
 
 def obter_html_bandeira(pais):
@@ -98,12 +95,11 @@ def render_estrelas(num):
         return "⚪ Não avaliado"
     return "⭐" * n + "☆" * (5 - n)
 
-# Conexão com o Google Sheets
-conn = st.connection("gsheets", type=GSheetsConnection)
-
 def carregar_dados_frescos():
-    df = conn.read(ttl="0s") # Leitura sem cache para garantir dados em tempo real
-    df = df.astype(str)
+    arquivo = "albums.csv"
+    if not os.path.exists(arquivo):
+        return pd.DataFrame()
+    df = pd.read_csv(arquivo, on_bad_lines='skip', dtype=str)
     
     colunas_obrigatorias = {
         'Cover_Rating': '0', 'Total_Tracks': '10', 'Liked_Tracks': '0',
@@ -127,15 +123,6 @@ def carregar_dados_frescos():
     prop = df['Liked_Tracks'] / df['Total_Tracks'].replace(0, 1)
     df['Nota_Calculada'] = (prop * 5.0 * 0.70) + (df['Cover_Rating'] * 0.30)
     return df
-
-def salvar_dados_no_sheets(df_novo):
-    cols_para_salvar = [
-        'Artist', 'Country', 'Album', 'Released', 'Spotify_Link', 
-        'Colecao', 'Cover_Rating', 'Total_Tracks', 'Liked_Tracks', 
-        'Favorite_Track', 'My_Review', 'Status', 'Ultima_Audicao'
-    ]
-    df_para_salvar = df_novo[cols_para_salvar].copy()
-    conn.update(data=df_para_salvar)
 
 def aplicar_filtros_comuns(df_base):
     c1, c2, c3, c4, c5 = st.columns(5)
@@ -252,19 +239,21 @@ if st.session_state.filtro_aba == "álbum do dia":
                     st.rerun()
             with c_p2:
                 if st.button("⏳ Avaliar depois"):
-                    m_idx = df_albums[(df_albums['Album'] == str(album_alvo['Album'])) & (df_albums['Artist'] == str(album_alvo['Artist']))].index
+                    df_all = pd.read_csv("albums.csv", dtype=str)
+                    m_idx = df_all[(df_all['Album'] == str(album_alvo['Album'])) & (df_all['Artist'] == str(album_alvo['Artist']))].index
                     if len(m_idx) > 0:
-                        df_albums.loc[m_idx[0], 'Status'] = 'Avaliar Depois'
-                        salvar_dados_no_sheets(df_albums)
+                        df_all.loc[m_idx[0], 'Status'] = 'Avaliar Depois'
+                        df_all.to_csv("albums.csv", index=False)
                     st.session_state.ignorar_pendente = True
                     st.success("Movido para 'Avaliar depois'!")
                     st.rerun()
             with c_p3:
                 if st.button("❌ Não quero avaliar"):
-                    m_idx = df_albums[(df_albums['Album'] == str(album_alvo['Album'])) & (df_albums['Artist'] == str(album_alvo['Artist']))].index
+                    df_all = pd.read_csv("albums.csv", dtype=str)
+                    m_idx = df_all[(df_all['Album'] == str(album_alvo['Album'])) & (df_all['Artist'] == str(album_alvo['Artist']))].index
                     if len(m_idx) > 0:
-                        df_albums.loc[m_idx[0], 'Status'] = 'Não Avaliado'
-                        salvar_dados_no_sheets(df_albums)
+                        df_all.loc[m_idx[0], 'Status'] = 'Não Avaliado'
+                        df_all.to_csv("albums.csv", index=False)
                     st.session_state.ignorar_pendente = True
                     st.success("Movido para 'Não avaliados'!")
                     st.rerun()
@@ -313,34 +302,37 @@ if st.session_state.filtro_aba == "álbum do dia":
             col_b1, col_b2, col_b3 = st.columns(3)
             with col_b1:
                 if st.button("salvar audição", type="primary"):
-                    m_idx = df_albums[(df_albums['Album'] == str(album_alvo['Album'])) & (df_albums['Artist'] == str(album_alvo['Artist']))].index
+                    df_all = pd.read_csv("albums.csv", dtype=str)
+                    m_idx = df_all[(df_all['Album'] == str(album_alvo['Album'])) & (df_all['Artist'] == str(album_alvo['Artist']))].index
                     if len(m_idx) > 0:
                         idx_s = m_idx[0]
                         if feedback_estrelas is not None:
-                            df_albums.loc[idx_s, 'Cover_Rating'] = str(int(feedback_estrelas + 1))
-                        df_albums.loc[idx_s, 'Total_Tracks'] = str(int(tot_p))
-                        df_albums.loc[idx_s, 'Liked_Tracks'] = str(int(lik_p))
-                        df_albums.loc[idx_s, 'Colecao'] = str(pop_colecao)
-                        df_albums.loc[idx_s, 'Status'] = 'Avaliado'
-                        df_albums.loc[idx_s, 'Ultima_Audicao'] = today_str
-                        salvar_dados_no_sheets(df_albums)
+                            df_all.loc[idx_s, 'Cover_Rating'] = str(int(feedback_estrelas + 1))
+                        df_all.loc[idx_s, 'Total_Tracks'] = str(int(tot_p))
+                        df_all.loc[idx_s, 'Liked_Tracks'] = str(int(lik_p))
+                        df_all.loc[idx_s, 'Colecao'] = str(pop_colecao)
+                        df_all.loc[idx_s, 'Status'] = 'Avaliado'
+                        df_all.loc[idx_s, 'Ultima_Audicao'] = today_str
+                        df_all.to_csv("albums.csv", index=False)
                     st.session_state.ignorar_pendente = False
-                    st.success("audição registrada e salva no Google Sheets!")
+                    st.success("audição registrada com sucesso!")
                     st.rerun()
             with col_b2:
                 if st.button("⏳ avaliar depois"):
-                    m_idx = df_albums[(df_albums['Album'] == str(album_alvo['Album'])) & (df_albums['Artist'] == str(album_alvo['Artist']))].index
+                    df_all = pd.read_csv("albums.csv", dtype=str)
+                    m_idx = df_all[(df_all['Album'] == str(album_alvo['Album'])) & (df_all['Artist'] == str(album_alvo['Artist']))].index
                     if len(m_idx) > 0:
-                        df_albums.loc[m_idx[0], 'Status'] = 'Avaliar Depois'
-                        salvar_dados_no_sheets(df_albums)
+                        df_all.loc[m_idx[0], 'Status'] = 'Avaliar Depois'
+                        df_all.to_csv("albums.csv", index=False)
                     st.success("Movido para 'Avaliar depois'!")
                     st.rerun()
             with col_b3:
                 if st.button("❌ não quero avaliar"):
-                    m_idx = df_albums[(df_albums['Album'] == str(album_alvo['Album'])) & (df_albums['Artist'] == str(album_alvo['Artist']))].index
+                    df_all = pd.read_csv("albums.csv", dtype=str)
+                    m_idx = df_all[(df_all['Album'] == str(album_alvo['Album'])) & (df_all['Artist'] == str(album_alvo['Artist']))].index
                     if len(m_idx) > 0:
-                        df_albums.loc[m_idx[0], 'Status'] = 'Não Avaliado'
-                        salvar_dados_no_sheets(df_albums)
+                        df_all.loc[m_idx[0], 'Status'] = 'Não Avaliado'
+                        df_all.to_csv("albums.csv", index=False)
                     st.success("Movido para 'Não avaliados'!")
                     st.rerun()
 
@@ -395,8 +387,9 @@ elif st.session_state.filtro_aba == "minhas avaliações":
                         st.markdown("---")
                         with st.container():
                             st.markdown(f"✏️ **Editando: {r['Album']} ({r['Artist']})**")
-                            match_idx = df_albums[(df_albums['Album'] == r['Album']) & (df_albums['Artist'] == r['Artist'])].index
-                            row_sel = df_albums.loc[match_idx[0]] if len(match_idx) > 0 else r
+                            df_fresh = pd.read_csv("albums.csv", dtype=str)
+                            match_idx = df_fresh[(df_fresh['Album'] == r['Album']) & (df_fresh['Artist'] == r['Artist'])].index
+                            row_sel = df_fresh.loc[match_idx[0]] if len(match_idx) > 0 else r
                             
                             c_ed1, c_ed2 = st.columns(2)
                             with c_ed1:
@@ -423,16 +416,17 @@ elif st.session_state.filtro_aba == "minhas avaliações":
                                 nova_colecao = st.selectbox("minha coleção", ["Sim", "Não"], index=idx_col, key=f"hist_s_{flat_idx}")
                                 
                                 if st.button("salvar alterações", type="primary", key=f"hist_save_{flat_idx}"):
-                                    m_idx = df_albums[(df_albums['Album'] == str(r['Album'])) & (df_albums['Artist'] == str(r['Artist']))].index
+                                    df_all = pd.read_csv("albums.csv", dtype=str)
+                                    m_idx = df_all[(df_all['Album'] == str(r['Album'])) & (df_all['Artist'] == str(r['Artist']))].index
                                     if len(m_idx) > 0:
                                         idx_s = m_idx[0]
                                         if fb_ed is not None:
-                                            df_albums.loc[idx_s, 'Cover_Rating'] = str(int(fb_ed + 1))
-                                        df_albums.loc[idx_s, 'Total_Tracks'] = str(int(tot_f))
-                                        df_albums.loc[idx_s, 'Liked_Tracks'] = str(int(lik_f))
-                                        df_albums.loc[idx_s, 'Colecao'] = str(nova_colecao)
-                                        salvar_dados_no_sheets(df_albums)
-                                        st.success("Salvo no Google Sheets com sucesso!")
+                                            df_all.loc[idx_s, 'Cover_Rating'] = str(int(fb_ed + 1))
+                                        df_all.loc[idx_s, 'Total_Tracks'] = str(int(tot_f))
+                                        df_all.loc[idx_s, 'Liked_Tracks'] = str(int(lik_f))
+                                        df_all.loc[idx_s, 'Colecao'] = str(nova_colecao)
+                                        df_all.to_csv("albums.csv", index=False)
+                                        st.success("Salvo com sucesso!")
                                         del st.session_state.album_editando
                                         st.rerun()
                                         
@@ -492,8 +486,9 @@ elif st.session_state.filtro_aba == "minha coleção":
                         st.markdown("---")
                         with st.container():
                             st.markdown(f"✏️ **Editando: {r['Album']} ({r['Artist']})**")
-                            match_idx = df_albums[(df_albums['Album'] == r['Album']) & (df_albums['Artist'] == r['Artist'])].index
-                            row_sel = df_albums.loc[match_idx[0]] if len(match_idx) > 0 else r
+                            df_fresh = pd.read_csv("albums.csv", dtype=str)
+                            match_idx = df_fresh[(df_fresh['Album'] == r['Album']) & (df_fresh['Artist'] == r['Artist'])].index
+                            row_sel = df_fresh.loc[match_idx[0]] if len(match_idx) > 0 else r
                             
                             c_ed1, c_ed2 = st.columns(2)
                             with c_ed1:
@@ -520,15 +515,16 @@ elif st.session_state.filtro_aba == "minha coleção":
                                 nova_colecao = st.selectbox("minha coleção", ["Sim", "Não"], index=idx_col, key=f"col_s_{flat_idx}")
                                 
                                 if st.button("salvar alterações", type="primary", key=f"col_save_{flat_idx}"):
-                                    m_idx = df_albums[(df_albums['Album'] == str(r['Album'])) & (df_albums['Artist'] == str(r['Artist']))].index
+                                    df_all = pd.read_csv("albums.csv", dtype=str)
+                                    m_idx = df_all[(df_all['Album'] == str(r['Album'])) & (df_all['Artist'] == str(r['Artist']))].index
                                     if len(m_idx) > 0:
                                         idx_s = m_idx[0]
                                         if fb_ed is not None:
-                                            df_albums.loc[idx_s, 'Cover_Rating'] = str(int(fb_ed + 1))
-                                        df_albums.loc[idx_s, 'Total_Tracks'] = str(int(tot_f))
-                                        df_albums.loc[idx_s, 'Liked_Tracks'] = str(int(lik_f))
-                                        df_albums.loc[idx_s, 'Colecao'] = str(nova_colecao)
-                                        salvar_dados_no_sheets(df_albums)
+                                            df_all.loc[idx_s, 'Cover_Rating'] = str(int(fb_ed + 1))
+                                        df_all.loc[idx_s, 'Total_Tracks'] = str(int(tot_f))
+                                        df_all.loc[idx_s, 'Liked_Tracks'] = str(int(lik_f))
+                                        df_all.loc[idx_s, 'Colecao'] = str(nova_colecao)
+                                        df_all.to_csv("albums.csv", index=False)
                                         st.success("Salvo com sucesso!")
                                         del st.session_state.album_editando
                                         st.rerun()
@@ -566,18 +562,20 @@ elif st.session_state.filtro_aba == "avaliar depois":
                     st.rerun()
             with col_ad2:
                 if st.button("❌ Não quero avaliar", key=f"btn_ev_dep_{idx}1"):
-                    m_idx = df_albums[(df_albums['Album'] == str(r['Album'])) & (df_albums['Artist'] == str(r['Artist']))].index
+                    df_all = pd.read_csv("albums.csv", dtype=str)
+                    m_idx = df_all[(df_all['Album'] == str(r['Album'])) & (df_all['Artist'] == str(r['Artist']))].index
                     if len(m_idx) > 0:
-                        df_albums.loc[m_idx[0], 'Status'] = 'Não Avaliado'
-                        salvar_dados_no_sheets(df_albums)
+                        df_all.loc[m_idx[0], 'Status'] = 'Não Avaliado'
+                        df_all.to_csv("albums.csv", index=False)
                     st.rerun()
                     
             if st.session_state.get('album_avaliando_direto') == r['Album']:
                 st.markdown("---")
                 with st.container():
                     st.markdown(f"✏️ **Avaliando diretamente: {r['Album']} ({r['Artist']})**")
-                    match_idx = df_albums[(df_albums['Album'] == r['Album']) & (df_albums['Artist'] == r['Artist'])].index
-                    row_sel = df_albums.loc[match_idx[0]] if len(match_idx) > 0 else r
+                    df_fresh = pd.read_csv("albums.csv", dtype=str)
+                    match_idx = df_fresh[(df_fresh['Album'] == r['Album']) & (df_fresh['Artist'] == r['Artist'])].index
+                    row_sel = df_fresh.loc[match_idx[0]] if len(match_idx) > 0 else r
                     
                     c_ed1, c_ed2 = st.columns(2)
                     with c_ed1:
@@ -604,17 +602,18 @@ elif st.session_state.filtro_aba == "avaliar depois":
                         nova_colecao = st.selectbox("minha coleção", ["Sim", "Não"], index=idx_col, key=f"direto_s_{idx}")
                         
                         if st.button("salvar audição", type="primary", key=f"direto_save_{idx}"):
-                            m_idx = df_albums[(df_albums['Album'] == str(r['Album'])) & (df_albums['Artist'] == str(r['Artist']))].index
+                            df_all = pd.read_csv("albums.csv", dtype=str)
+                            m_idx = df_all[(df_all['Album'] == str(r['Album'])) & (df_all['Artist'] == str(r['Artist']))].index
                             if len(m_idx) > 0:
                                 idx_s = m_idx[0]
                                 if fb_ed is not None:
-                                    df_albums.loc[idx_s, 'Cover_Rating'] = str(int(fb_ed + 1))
-                                df_albums.loc[idx_s, 'Total_Tracks'] = str(int(tot_f))
-                                df_albums.loc[idx_s, 'Liked_Tracks'] = str(int(lik_f))
-                                df_albums.loc[idx_s, 'Colecao'] = str(nova_colecao)
-                                df_albums.loc[idx_s, 'Status'] = 'Avaliado'
-                                salvar_dados_no_sheets(df_albums)
-                                st.success("Avaliação salva no Google Sheets! Movido para 'Minhas Avaliações'.")
+                                    df_all.loc[idx_s, 'Cover_Rating'] = str(int(fb_ed + 1))
+                                df_all.loc[idx_s, 'Total_Tracks'] = str(int(tot_f))
+                                df_all.loc[idx_s, 'Liked_Tracks'] = str(int(lik_f))
+                                df_all.loc[idx_s, 'Colecao'] = str(nova_colecao)
+                                df_all.loc[idx_s, 'Status'] = 'Avaliado'
+                                df_all.to_csv("albums.csv", index=False)
+                                st.success("Avaliação salva! Movido para 'Minhas Avaliações'.")
                                 del st.session_state.album_avaliando_direto
                                 st.rerun()
                                 
@@ -640,10 +639,11 @@ elif st.session_state.filtro_aba == "não avaliados":
                 </div>
             """, unsafe_allow_html=True)
             if st.button("🔄 Voltar para Avaliar Depois", key=f"btn_nao_ev_{idx}"):
-                m_idx = df_albums[(df_albums['Album'] == str(r['Album'])) & (df_albums['Artist'] == str(r['Artist']))].index
+                df_all = pd.read_csv("albums.csv", dtype=str)
+                m_idx = df_all[(df_all['Album'] == str(r['Album'])) & (df_all['Artist'] == str(r['Artist']))].index
                 if len(m_idx) > 0:
-                    df_albums.loc[m_idx[0], 'Status'] = 'Avaliar Depois'
-                    salvar_dados_no_sheets(df_albums)
+                    df_all.loc[m_idx[0], 'Status'] = 'Avaliar Depois'
+                    df_all.to_csv("albums.csv", index=False)
                 st.rerun()
 
 # 6. ABA: ESTATÍSTICAS
@@ -661,6 +661,18 @@ elif st.session_state.filtro_aba == "estatísticas":
         st.metric("média de nota dos discos", f"{media_discos:.1f} / 5")
     with c_s3:
         st.metric("média de nota das capas", f"{media_capas:.1f} / 5")
+    
+    st.markdown("---")
+    st.markdown("### 📥 backup dos dados")
+    st.caption("baixe uma cópia atualizada da sua planilha de discos (`albums.csv`) para o seu computador.")
+    if os.path.exists("albums.csv"):
+        with open("albums.csv", "rb") as f:
+            st.download_button(
+                label="📥 baixar arquivo albums.csv",
+                data=f,
+                file_name="albums.csv",
+                mime="text/csv"
+            )
             
     st.markdown("---")
     st.markdown("### 📚 acervo geral e histórico")
@@ -711,8 +723,9 @@ elif st.session_state.filtro_aba == "estatísticas":
                         st.markdown("---")
                         with st.container():
                             st.markdown(f"✏️ **Editando: {r['Album']} ({r['Artist']})**")
-                            match_idx = df_albums[(df_albums['Album'] == r['Album']) & (df_albums['Artist'] == r['Artist'])].index
-                            row_sel = df_albums.loc[match_idx[0]] if len(match_idx) > 0 else r
+                            df_fresh = pd.read_csv("albums.csv", dtype=str)
+                            match_idx = df_fresh[(df_fresh['Album'] == r['Album']) & (df_fresh['Artist'] == r['Artist'])].index
+                            row_sel = df_fresh.loc[match_idx[0]] if len(match_idx) > 0 else r
                             
                             c_ed1, c_ed2 = st.columns(2)
                             with c_ed1:
@@ -739,15 +752,16 @@ elif st.session_state.filtro_aba == "estatísticas":
                                 nova_colecao = st.selectbox("minha coleção", ["Sim", "Não"], index=idx_col, key=f"geral_s_{flat_idx}")
                                 
                                 if st.button("salvar alterações", type="primary", key=f"geral_save_{flat_idx}"):
-                                    m_idx = df_albums[(df_albums['Album'] == str(r['Album'])) & (df_albums['Artist'] == str(r['Artist']))].index
+                                    df_all = pd.read_csv("albums.csv", dtype=str)
+                                    m_idx = df_all[(df_all['Album'] == str(r['Album'])) & (df_all['Artist'] == str(r['Artist']))].index
                                     if len(m_idx) > 0:
                                         idx_s = m_idx[0]
                                         if fb_ed is not None:
-                                            df_albums.loc[idx_s, 'Cover_Rating'] = str(int(fb_ed + 1))
-                                        df_albums.loc[idx_s, 'Total_Tracks'] = str(int(tot_f))
-                                        df_albums.loc[idx_s, 'Liked_Tracks'] = str(int(lik_f))
-                                        df_albums.loc[idx_s, 'Colecao'] = str(nova_colecao)
-                                        salvar_dados_no_sheets(df_albums)
+                                            df_all.loc[idx_s, 'Cover_Rating'] = str(int(fb_ed + 1))
+                                        df_all.loc[idx_s, 'Total_Tracks'] = str(int(tot_f))
+                                        df_all.loc[idx_s, 'Liked_Tracks'] = str(int(lik_f))
+                                        df_all.loc[idx_s, 'Colecao'] = str(nova_colecao)
+                                        df_all.to_csv("albums.csv", index=False)
                                         st.success("Salvo com sucesso!")
                                         del st.session_state.album_editando
                                         st.rerun()
@@ -779,6 +793,7 @@ elif st.session_state.filtro_aba == "inserir manualmente":
             m_lik = st.number_input("músicas que gostou", 0, m_tot, 0)
             
         if st.form_submit_button("adicionar à coleção"):
+            df_all = pd.read_csv("albums.csv", dtype=str)
             novo_registro = pd.DataFrame([{
                 'Artist': str(m_artista),
                 'Country': str(m_pais),
@@ -794,6 +809,6 @@ elif st.session_state.filtro_aba == "inserir manualmente":
                 'Status': 'Pendente',
                 'Ultima_Audicao': ''
             }])
-            df_atualizado = pd.concat([df_albums, novo_registro], ignore_index=True)
-            salvar_dados_no_sheets(df_atualizado)
-            st.success(f"'{m_album}' adicionado ao Google Sheets com sucesso!")
+            df_atualizado = pd.concat([df_all, novo_registro], ignore_index=True)
+            df_atualizado.to_csv("albums.csv", index=False)
+            st.success(f"'{m_album}' adicionado com sucesso!")
