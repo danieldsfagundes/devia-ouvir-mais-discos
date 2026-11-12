@@ -120,6 +120,10 @@ def carregar_dados_frescos():
     df['Status'] = df['Status'].fillna('Pendente').astype(str)
     df['Ultima_Audicao'] = df['Ultima_Audicao'].fillna('').astype(str)
     
+    # Garante que discos com nota de capa já registrada sejam considerados 'Avaliado'
+    mask_ja_tem_nota = (df['Cover_Rating'] > 0) & (df['Status'].str.strip().str.lower() == 'pendente')
+    df.loc[mask_ja_tem_nota, 'Status'] = 'Avaliado'
+    
     prop = df['Liked_Tracks'] / df['Total_Tracks'].replace(0, 1)
     df['Nota_Calculada'] = (prop * 5.0 * 0.70) + (df['Cover_Rating'] * 0.30)
     return df
@@ -261,9 +265,11 @@ if st.session_state.filtro_aba == "álbum do dia":
         
         if album_alvo is None or (not pendentes.empty and st.session_state.ignorar_pendente):
             today_seed = int(datetime.date.today().strftime("%Y%m%d"))
-            disponiveis_hoje = df_albums[df_albums['Status'].str.strip().str.lower().isin(['pendente', 'avaliado'])]
+            # Sorteia EXCLUSIVAMENTE entre os discos com Status 'pendente' (exclui os já avaliados)
+            disponiveis_hoje = df_albums[df_albums['Status'].str.strip().str.lower() == 'pendente']
             if disponiveis_hoje.empty:
-                disponiveis_hoje = df_albums
+                st.success("🎉 Parabéns! Você já avaliou todos os discos pendentes do seu acervo!")
+                st.stop()
             album_alvo = disponiveis_hoje.sample(1, random_state=today_seed).iloc[0]
         
         st.markdown("### 💿 álbum do dia")
@@ -339,14 +345,19 @@ if st.session_state.filtro_aba == "álbum do dia":
 # 2. ABA: MINHAS AVALIAÇÕES
 elif st.session_state.filtro_aba == "minhas avaliações":
     st.markdown("### ⭐ minhas avaliações")
-    df_base = df_albums[df_albums['Status'].str.strip().str.lower() == 'avaliado'].copy()
+    # Inclui todos os marcados como 'avaliado' OU que possuam nota de capa > 0
+    df_base = df_albums[
+        (df_albums['Status'].str.strip().str.lower() == 'avaliado') | 
+        (df_albums['Cover_Rating'] > 0)
+    ].copy()
     df_filtrado = aplicar_filtros_comuns(df_base)
-    st.caption(f"exibindo {len(df_filtrado)} discos avaliados.")
+    st.caption(f"exibindo todos os {len(df_filtrado)} discos avaliados.")
     
     if df_filtrado.empty:
         st.info("💡 Nenhum disco avaliado encontrado com esses filtros.")
     else:
-        lista_discos_hist = df_filtrado.head(24).to_dict('records')
+        # Sem limite de 24 itens: exibe TODOS os discos avaliados
+        lista_discos_hist = df_filtrado.to_dict('records')
         for row_idx in range(0, len(lista_discos_hist), 4):
             cols = st.columns(4)
             for col_idx in range(4):
@@ -425,6 +436,7 @@ elif st.session_state.filtro_aba == "minhas avaliações":
                                         df_all.loc[idx_s, 'Total_Tracks'] = str(int(tot_f))
                                         df_all.loc[idx_s, 'Liked_Tracks'] = str(int(lik_f))
                                         df_all.loc[idx_s, 'Colecao'] = str(nova_colecao)
+                                        df_all.loc[idx_s, 'Status'] = 'Avaliado'
                                         df_all.to_csv("albums.csv", index=False)
                                         st.success("Salvo com sucesso!")
                                         del st.session_state.album_editando
@@ -445,7 +457,7 @@ elif st.session_state.filtro_aba == "minha coleção":
     if df_filtrado.empty:
         st.info("💡 Nenhum disco na coleção com esses filtros.")
     else:
-        lista_discos = df_filtrado.head(24).to_dict('records')
+        lista_discos = df_filtrado.to_dict('records')
         for row_idx in range(0, len(lista_discos), 4):
             cols = st.columns(4)
             for col_idx in range(4):
@@ -521,6 +533,7 @@ elif st.session_state.filtro_aba == "minha coleção":
                                         idx_s = m_idx[0]
                                         if fb_ed is not None:
                                             df_all.loc[idx_s, 'Cover_Rating'] = str(int(fb_ed + 1))
+                                            df_all.loc[idx_s, 'Status'] = 'Avaliado'
                                         df_all.loc[idx_s, 'Total_Tracks'] = str(int(tot_f))
                                         df_all.loc[idx_s, 'Liked_Tracks'] = str(int(lik_f))
                                         df_all.loc[idx_s, 'Colecao'] = str(nova_colecao)
@@ -649,7 +662,10 @@ elif st.session_state.filtro_aba == "não avaliados":
 # 6. ABA: ESTATÍSTICAS
 elif st.session_state.filtro_aba == "estatísticas":
     st.subheader("📊 estatísticas da sua coleção")
-    df_avaliados_est = df_albums[df_albums['Status'].str.strip().str.lower() == 'avaliado']
+    df_avaliados_est = df_albums[
+        (df_albums['Status'].str.strip().str.lower() == 'avaliado') | 
+        (df_albums['Cover_Rating'] > 0)
+    ]
     
     media_discos = df_avaliados_est['Nota_Calculada'].mean() if not df_avaliados_est.empty else 0.0
     media_capas = df_avaliados_est['Cover_Rating'].astype(float).mean() if not df_avaliados_est.empty else 0.0
@@ -758,6 +774,9 @@ elif st.session_state.filtro_aba == "estatísticas":
                                         idx_s = m_idx[0]
                                         if fb_ed is not None:
                                             df_all.loc[idx_s, 'Cover_Rating'] = str(int(fb_ed + 1))
+                                            df_all.loc[idx_s, 'Status'] = 'Avaliado'
+                                        elif int(float(df_all.loc[idx_s, 'Cover_Rating'] or 0)) > 0:
+                                            df_all.loc[idx_s, 'Status'] = 'Avaliado'
                                         df_all.loc[idx_s, 'Total_Tracks'] = str(int(tot_f))
                                         df_all.loc[idx_s, 'Liked_Tracks'] = str(int(lik_f))
                                         df_all.loc[idx_s, 'Colecao'] = str(nova_colecao)
@@ -794,6 +813,7 @@ elif st.session_state.filtro_aba == "inserir manualmente":
             
         if st.form_submit_button("adicionar à coleção"):
             df_all = pd.read_csv("albums.csv", dtype=str)
+            status_inicial = 'Avaliado' if m_capa > 0 else 'Pendente'
             novo_registro = pd.DataFrame([{
                 'Artist': str(m_artista),
                 'Country': str(m_pais),
@@ -806,7 +826,7 @@ elif st.session_state.filtro_aba == "inserir manualmente":
                 'Liked_Tracks': str(int(m_lik)),
                 'Favorite_Track': '',
                 'My_Review': '',
-                'Status': 'Pendente',
+                'Status': status_inicial,
                 'Ultima_Audicao': ''
             }])
             df_atualizado = pd.concat([df_all, novo_registro], ignore_index=True)
