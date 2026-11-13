@@ -132,9 +132,7 @@ def carregar_dados_online():
     df['Liked_Tracks'] = pd.to_numeric(df['Liked_Tracks'], errors='coerce').fillna(0).astype(int)
     df['Released'] = pd.to_numeric(df['Released'], errors='coerce').fillna(1975).astype(int)
     
-    # Normaliza datas caso venham com timestamp ISO do Google Sheets
     df['Ultima_Audicao'] = df['Ultima_Audicao'].apply(lambda x: str(x)[:10] if len(str(x)) >= 10 and '-' in str(x) else str(x).strip())
-    
     df.loc[df['Cover_Rating'] > 0, 'Status'] = 'Avaliado'
     
     prop = df['Liked_Tracks'] / df['Total_Tracks'].replace(0, 1)
@@ -261,7 +259,6 @@ if st.sidebar.button("🔄 recarregar planilha"):
 if st.session_state.filtro_aba == "álbum do dia":
     today_str = str(datetime.date.today())
     
-    # Verifica se QUALQUER decisão (Avaliado, Avaliar Depois ou Não Avaliado) já foi tomada hoje
     decididos_hoje = df_albums[
         (df_albums['Ultima_Audicao'] == today_str) & 
         (df_albums['Status'].str.strip().str.lower().isin(['avaliado', 'avaliar depois', 'não avaliado']))
@@ -279,7 +276,6 @@ if st.session_state.filtro_aba == "álbum do dia":
             </div>
         """, unsafe_allow_html=True)
     else:
-        # Sorteio determinístico fixo pela data de hoje (não muda ao dar F5)
         disponiveis_hoje = df_albums[df_albums['Status'].str.strip().str.lower() == 'pendente'].reset_index(drop=True)
         
         if disponiveis_hoje.empty:
@@ -768,41 +764,73 @@ elif st.session_state.filtro_aba == "estatísticas":
 # 7. ABA: INSERIR MANUALMENTE
 elif st.session_state.filtro_aba == "inserir manualmente":
     st.subheader("➕ inserir novo disco manualmente")
-    with st.form("form_manual"):
-        m_artista = st.text_input("artista")
-        m_pais = st.text_input("país", value="Brasil")
-        m_album = st.text_input("nome do álbum")
-        m_ano = st.number_input("ano de lançamento", min_value=1900, max_value=2026, value=1975)
-        m_spotify = st.text_input("link do álbum no Spotify", value="Spotify")
-        m_colecao = st.selectbox("minha coleção", ["Sim", "Não"])
+    
+    m_artista = st.text_input("artista", key="man_artist")
+    m_pais = st.text_input("país", value="Brasil", key="man_pais")
+    m_album = st.text_input("nome do álbum", key="man_album")
+    m_ano = st.number_input("ano de lançamento", min_value=1900, max_value=2026, value=1975, key="man_ano")
+    m_spotify = st.text_input("link do álbum no Spotify", value="Spotify", key="man_spotify")
+    m_colecao = st.selectbox("minha coleção", ["Sim", "Não"], key="man_col")
+    
+    st.markdown("nota da capa (1 a 5)")
+    fb_man = st.feedback("stars", key="manual_stars")
+    m_capa = (fb_man + 1) if fb_man is not None else 0
+    
+    c_m1, c_m2 = st.columns(2)
+    with c_m1:
+        m_tot = st.number_input("total de músicas", 1, 30, 10, key="man_tot")
+    with c_m2:
+        m_lik = st.number_input("músicas que gostou", 0, m_tot, 0, key="man_lik")
         
-        st.markdown("nota da capa (1 a 5)")
-        fb_man = st.feedback("stars", key="manual_stars")
-        m_capa = (fb_man + 1) if fb_man is not None else 0
-        
-        c_m1, c_m2 = st.columns(2)
-        with c_m1:
-            m_tot = st.number_input("total de músicas", 1, 30, 10)
-        with c_m2:
-            m_lik = st.number_input("músicas que gostou", 0, m_tot, 0)
-            
-        if st.form_submit_button("adicionar à coleção"):
-            status_inicial = 'Avaliado' if m_capa > 0 else 'Pendente'
-            novo_registro = pd.DataFrame([{
-                'Artist': str(m_artista),
-                'Country': str(m_pais),
-                'Album': str(m_album),
-                'Released': int(m_ano),
-                'Cover_Rating': int(m_capa),
-                'Total_Tracks': int(m_tot),
-                'Liked_Tracks': int(m_lik),
-                'Favorite_Track': '',
-                'My_Review': '',
-                'Spotify_Link': str(m_spotify),
-                'Status': status_inicial,
-                'Colecao': str(m_colecao),
-                'Ultima_Audicao': ''
-            }])
-            df_atualizado = pd.concat([df_albums, novo_registro], ignore_index=True)
-            salvar_dados_online(df_atualizado)
-            st.success(f"'{m_album}' adicionado direto no Google Sheets!")
+    st.markdown("<br>", unsafe_allow_html=True)
+    c_btn1, c_btn2 = st.columns(2)
+    
+    with c_btn1:
+        if st.button("🎵 avaliar agora", type="primary", use_container_width=True):
+            if not m_artista.strip() or not m_album.strip():
+                st.error("Preencha ao menos o Artista e o Nome do Álbum.")
+            else:
+                novo_registro = pd.DataFrame([{
+                    'Artist': str(m_artista),
+                    'Country': str(m_pais),
+                    'Album': str(m_album),
+                    'Released': int(m_ano),
+                    'Cover_Rating': int(m_capa),
+                    'Total_Tracks': int(m_tot),
+                    'Liked_Tracks': int(m_lik),
+                    'Favorite_Track': '',
+                    'My_Review': '',
+                    'Spotify_Link': str(m_spotify),
+                    'Status': 'Avaliado',
+                    'Colecao': str(m_colecao),
+                    'Ultima_Audicao': str(datetime.date.today())
+                }])
+                df_atualizado = pd.concat([df_albums, novo_registro], ignore_index=True)
+                salvar_dados_online(df_atualizado)
+                st.success(f"'{m_album}' adicionado e avaliado com sucesso!")
+                st.rerun()
+                
+    with c_btn2:
+        if st.button("⏳ avaliar depois", use_container_width=True):
+            if not m_artista.strip() or not m_album.strip():
+                st.error("Preencha ao menos o Artista e o Nome do Álbum.")
+            else:
+                novo_registro = pd.DataFrame([{
+                    'Artist': str(m_artista),
+                    'Country': str(m_pais),
+                    'Album': str(m_album),
+                    'Released': int(m_ano),
+                    'Cover_Rating': int(m_capa),
+                    'Total_Tracks': int(m_tot),
+                    'Liked_Tracks': int(m_lik),
+                    'Favorite_Track': '',
+                    'My_Review': '',
+                    'Spotify_Link': str(m_spotify),
+                    'Status': 'Avaliar Depois',
+                    'Colecao': str(m_colecao),
+                    'Ultima_Audicao': ''
+                }])
+                df_atualizado = pd.concat([df_albums, novo_registro], ignore_index=True)
+                salvar_dados_online(df_atualizado)
+                st.success(f"'{m_album}' salvo na fila 'Avaliar depois'!")
+                st.rerun()
