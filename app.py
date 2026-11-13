@@ -5,7 +5,7 @@ import urllib.parse
 import requests
 
 # COLE AQUI A URL GERADA NO GOOGLE APPS SCRIPT
-APPS_SCRIPT_URL = "COLE_SUA_URL_DO_APPS_SCRIPT_AQUI"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzCSBNBbDg7U4VGGYa6eriu-73tDgFAYHhU_tKaiRI3wKQr6epknsttqK38-mSiOSMtkQ/exec"
 
 st.set_page_config(
     page_title="devia ouvir mais discos", 
