@@ -4,8 +4,8 @@ import datetime
 import urllib.parse
 import requests
 
-# COLE AQUI A URL GERADA NO GOOGLE APPS SCRIPT (PASSO 1)
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzCSBNBbDg7U4VGGYa6eriu-73tDgFAYHhU_tKaiRI3wKQr6epknsttqK38-mSiOSMtkQ/exec"
+# COLE AQUI A URL GERADA NO GOOGLE APPS SCRIPT
+APPS_SCRIPT_URL = "COLE_SUA_URL_DO_APPS_SCRIPT_AQUI"
 
 st.set_page_config(
     page_title="devia ouvir mais discos", 
@@ -132,7 +132,9 @@ def carregar_dados_online():
     df['Liked_Tracks'] = pd.to_numeric(df['Liked_Tracks'], errors='coerce').fillna(0).astype(int)
     df['Released'] = pd.to_numeric(df['Released'], errors='coerce').fillna(1975).astype(int)
     
-    # Força status 'Avaliado' se já possuir nota de capa > 0
+    # Normaliza datas caso venham com timestamp ISO do Google Sheets
+    df['Ultima_Audicao'] = df['Ultima_Audicao'].apply(lambda x: str(x)[:10] if len(str(x)) >= 10 and '-' in str(x) else str(x).strip())
+    
     df.loc[df['Cover_Rating'] > 0, 'Status'] = 'Avaliado'
     
     prop = df['Liked_Tracks'] / df['Total_Tracks'].replace(0, 1)
@@ -234,8 +236,6 @@ if df_albums.empty:
 
 if 'filtro_aba' not in st.session_state:
     st.session_state.filtro_aba = "álbum do dia"
-if 'ignorar_pendente' not in st.session_state:
-    st.session_state.ignorar_pendente = False
 
 st.sidebar.markdown("### 🎛️ menu")
 abas_disponiveis = [
@@ -260,59 +260,34 @@ if st.sidebar.button("🔄 recarregar planilha"):
 # 1. ABA: ÁLBUM DO DIA
 if st.session_state.filtro_aba == "álbum do dia":
     today_str = str(datetime.date.today())
-    ja_avaliou_hoje = not df_albums[(df_albums['Status'].str.strip().str.lower() == 'avaliado') & (df_albums['Ultima_Audicao'] == today_str)].empty
     
-    if ja_avaliou_hoje:
-        st.markdown("""
+    # Verifica se QUALQUER decisão (Avaliado, Avaliar Depois ou Não Avaliado) já foi tomada hoje
+    decididos_hoje = df_albums[
+        (df_albums['Ultima_Audicao'] == today_str) & 
+        (df_albums['Status'].str.strip().str.lower().isin(['avaliado', 'avaliar depois', 'não avaliado']))
+    ]
+    
+    if not decididos_hoje.empty:
+        disco_hoje = decididos_hoje.iloc[0]
+        acao_tomada = disco_hoje['Status']
+        st.markdown(f"""
             <div class="vinyl-card" style="border: 1px solid #1db954; text-align: center; padding: 30px; margin-top: 20px;">
-                <h2 style="color: #1db954;">🎉 Álbum do Dia já avaliado!</h2>
-                <p style="color: #ccc; font-size: 16px;">Você já concluiu a audição de hoje. Um novo álbum será liberado automaticamente amanhã (após 24h).</p>
+                <h2 style="color: #1db954;">✅ Disco do Dia concluído!</h2>
+                <p style="color: #ffffff; font-size: 18px; margin-bottom: 5px;"><b>{disco_hoje['Album']}</b> — {disco_hoje['Artist']}</p>
+                <p style="color: #f59e0b; font-size: 14px;">Status registrado hoje: <b>{acao_tomada}</b></p>
+                <p style="color: #ccc; font-size: 15px; margin-top: 15px;">O limite é de 1 disco por dia. Um novo álbum será sorteado automaticamente amanhã (após 24h).</p>
             </div>
         """, unsafe_allow_html=True)
     else:
-        pendentes = df_albums[df_albums['Status'].str.strip().str.lower() == 'pendente']
-        album_alvo = None
-        if not pendentes.empty and not st.session_state.ignorar_pendente:
-            album_alvo = pendentes.iloc[0]
-            st.markdown(f"""
-                <div class="vinyl-card" style="border: 1px solid #f59e0b; margin-bottom: 15px;">
-                    <b style="color: #f59e0b; font-size: 16px;">⚠️ Álbum Pendente de Avaliação</b><br>
-                    <span style="color: #ccc; font-size: 14px;">Você tem um álbum pendente ({album_alvo['Album']} - {album_alvo['Artist']}). O que deseja fazer com ele?</span>
-                </div>
-            """, unsafe_allow_html=True)
-            
-            c_p1, c_p2, c_p3 = st.columns(3)
-            with c_p1:
-                if st.button("🎵 Avaliar agora"):
-                    st.session_state.ignorar_pendente = False
-                    st.rerun()
-            with c_p2:
-                if st.button("⏳ Avaliar depois"):
-                    m_idx = df_albums[(df_albums['Album'] == str(album_alvo['Album'])) & (df_albums['Artist'] == str(album_alvo['Artist']))].index
-                    if len(m_idx) > 0:
-                        df_albums.loc[m_idx[0], 'Status'] = 'Avaliar Depois'
-                        salvar_dados_online(df_albums)
-                    st.session_state.ignorar_pendente = True
-                    st.success("Movido para 'Avaliar depois'!")
-                    st.rerun()
-            with c_p3:
-                if st.button("❌ Não quero avaliar"):
-                    m_idx = df_albums[(df_albums['Album'] == str(album_alvo['Album'])) & (df_albums['Artist'] == str(album_alvo['Artist']))].index
-                    if len(m_idx) > 0:
-                        df_albums.loc[m_idx[0], 'Status'] = 'Não Avaliado'
-                        salvar_dados_online(df_albums)
-                    st.session_state.ignorar_pendente = True
-                    st.success("Movido para 'Não avaliados'!")
-                    st.rerun()
-            st.markdown("---")
+        # Sorteio determinístico fixo pela data de hoje (não muda ao dar F5)
+        disponiveis_hoje = df_albums[df_albums['Status'].str.strip().str.lower() == 'pendente'].reset_index(drop=True)
         
-        if album_alvo is None or (not pendentes.empty and st.session_state.ignorar_pendente):
-            today_seed = int(datetime.date.today().strftime("%Y%m%d"))
-            disponiveis_hoje = df_albums[df_albums['Status'].str.strip().str.lower() == 'pendente']
-            if disponiveis_hoje.empty:
-                st.success("🎉 Parabéns! Você já avaliou todos os discos pendentes do seu acervo!")
-                st.stop()
-            album_alvo = disponiveis_hoje.sample(1, random_state=today_seed).iloc[0]
+        if disponiveis_hoje.empty:
+            st.success("🎉 Parabéns! Você já concluiu todos os discos pendentes do seu acervo!")
+            st.stop()
+            
+        today_seed = int(datetime.date.today().strftime("%Y%m%d"))
+        album_alvo = disponiveis_hoje.sample(1, random_state=today_seed).iloc[0]
         
         st.markdown("### 💿 álbum do dia")
         col_pop1, col_pop2 = st.columns([1, 2])
@@ -361,24 +336,22 @@ if st.session_state.filtro_aba == "álbum do dia":
                         df_albums.loc[idx_s, 'Status'] = 'Avaliado'
                         df_albums.loc[idx_s, 'Ultima_Audicao'] = today_str
                         salvar_dados_online(df_albums)
-                    st.session_state.ignorar_pendente = False
-                    st.success("Audição salva direto no Google Sheets!")
                     st.rerun()
             with col_b2:
                 if st.button("⏳ avaliar depois"):
                     m_idx = df_albums[(df_albums['Album'] == str(album_alvo['Album'])) & (df_albums['Artist'] == str(album_alvo['Artist']))].index
                     if len(m_idx) > 0:
                         df_albums.loc[m_idx[0], 'Status'] = 'Avaliar Depois'
+                        df_albums.loc[m_idx[0], 'Ultima_Audicao'] = today_str
                         salvar_dados_online(df_albums)
-                    st.success("Movido para 'Avaliar depois'!")
                     st.rerun()
             with col_b3:
                 if st.button("❌ não quero avaliar"):
                     m_idx = df_albums[(df_albums['Album'] == str(album_alvo['Album'])) & (df_albums['Artist'] == str(album_alvo['Artist']))].index
                     if len(m_idx) > 0:
                         df_albums.loc[m_idx[0], 'Status'] = 'Não Avaliado'
+                        df_albums.loc[m_idx[0], 'Ultima_Audicao'] = today_str
                         salvar_dados_online(df_albums)
-                    st.success("Movido para 'Não avaliados'!")
                     st.rerun()
 
 # 2. ABA: MINHAS AVALIAÇÕES
