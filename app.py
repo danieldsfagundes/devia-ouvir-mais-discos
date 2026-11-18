@@ -162,8 +162,12 @@ def obter_df():
         st.session_state.df_cache = carregar_dados_online()
     return st.session_state.df_cache
 
-def aplicar_filtros_comuns(df_base):
-    c1, c2, c3, c4, c5 = st.columns(5)
+def aplicar_filtros_comuns(df_base, incluir_colecao=False):
+    if incluir_colecao:
+        c1, c2, c3, c4, c5, c6 = st.columns(6)
+    else:
+        c1, c2, c3, c4, c5 = st.columns(5)
+        
     with c1:
         artistas_disponiveis = ["todos"] + sorted(df_base['Artist'].dropna().astype(str).unique().tolist())
         f_art = st.selectbox("filtrar por artista", artistas_disponiveis, key=f"art_{st.session_state.filtro_aba}")
@@ -177,6 +181,11 @@ def aplicar_filtros_comuns(df_base):
         f_nota = st.selectbox("filtrar por nota final", ["todos", "1+", "2+", "3+", "4+", "5"], key=f"nota_{st.session_state.filtro_aba}")
     with c5:
         f_pesquisa = st.text_input("pesquisa livre", placeholder="disco ou artista...", key=f"pesq_{st.session_state.filtro_aba}")
+    
+    f_col = "todos"
+    if incluir_colecao:
+        with c6:
+            f_col = st.selectbox("na coleção?", ["todos", "Sim", "Não"], key=f"col_filtro_{st.session_state.filtro_aba}")
 
     df_f = df_base.copy()
     if f_art != "todos":
@@ -191,6 +200,13 @@ def aplicar_filtros_comuns(df_base):
             df_f = df_f[(df_f['Cover_Rating'] > 0) & (df_f['Nota_Calculada'] >= 5.0)]
         else:
             df_f = df_f[(df_f['Cover_Rating'] > 0) & (df_f['Nota_Calculada'] >= val_nota) & (df_f['Nota_Calculada'] < val_nota + 1.0)]
+    if incluir_colecao and f_col != "todos":
+        col_normalizada = df_f['Colecao'].str.strip().str.capitalize()
+        if f_col == "Sim":
+            df_f = df_f[col_normalizada.isin(['Sim', 'S', 'True', 'Yes', '1'])]
+        else:
+            df_f = df_f[~col_normalizada.isin(['Sim', 'S', 'True', 'Yes', '1'])]
+            
     if f_pesquisa:
         termo = f_pesquisa.strip().lower()
         mask = df_f['Album'].astype(str).str.lower().str.contains(termo, na=False) | \
@@ -252,7 +268,6 @@ if st.sidebar.button("🔄 recarregar planilha"):
 
 # 1. ABA: ÁLBUM DO DIA
 if st.session_state.filtro_aba == "álbum do dia":
-    # Usa a data padrão segura (YYYY-MM-DD) baseada no servidor para evitar divergências do celular
     today_str = str(datetime.datetime.now(datetime.timezone.utc).date())
     
     decididos_hoje = df_albums[
@@ -353,7 +368,9 @@ elif st.session_state.filtro_aba == "minhas avaliações":
         (df_albums['Status'].str.strip().str.lower() == 'avaliado') | 
         (df_albums['Cover_Rating'] > 0)
     ].copy()
-    df_filtrado = aplicar_filtros_comuns(df_base)
+    
+    # Adicionado o filtro de coleção nesta aba
+    df_filtrado = aplicar_filtros_comuns(df_base, incluir_colecao=True)
     st.caption(f"exibindo todos os {len(df_filtrado)} discos avaliados.")
     
     if df_filtrado.empty:
