@@ -4,7 +4,6 @@ import datetime
 import urllib.parse
 import requests
 
-# COLE AQUI A URL GERADA NO GOOGLE APPS SCRIPT
 APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzCSBNBbDg7U4VGGYa6eriu-73tDgFAYHhU_tKaiRI3wKQr6epknsttqK38-mSiOSMtkQ/exec"
 
 st.set_page_config(
@@ -98,10 +97,6 @@ def render_estrelas(num):
     return "⭐" * n + "☆" * (5 - n)
 
 def carregar_dados_online():
-    if "COLE_SUA_URL" in APPS_SCRIPT_URL or not APPS_SCRIPT_URL.startswith("http"):
-        st.error("⚠️ Cole a URL do Google Apps Script na variável APPS_SCRIPT_URL no início do código.")
-        st.stop()
-        
     try:
         response = requests.get(APPS_SCRIPT_URL, timeout=15)
         response.raise_for_status()
@@ -257,7 +252,8 @@ if st.sidebar.button("🔄 recarregar planilha"):
 
 # 1. ABA: ÁLBUM DO DIA
 if st.session_state.filtro_aba == "álbum do dia":
-    today_str = str(datetime.date.today())
+    # Usa a data padrão segura (YYYY-MM-DD) baseada no servidor para evitar divergências do celular
+    today_str = str(datetime.datetime.now(datetime.timezone.utc).date())
     
     decididos_hoje = df_albums[
         (df_albums['Ultima_Audicao'] == today_str) & 
@@ -282,7 +278,7 @@ if st.session_state.filtro_aba == "álbum do dia":
             st.success("🎉 Parabéns! Você já concluiu todos os discos pendentes do seu acervo!")
             st.stop()
             
-        today_seed = int(datetime.date.today().strftime("%Y%m%d"))
+        today_seed = int(datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d"))
         album_alvo = disponiveis_hoje.sample(1, random_state=today_seed).iloc[0]
         
         st.markdown("### 💿 álbum do dia")
@@ -803,7 +799,7 @@ elif st.session_state.filtro_aba == "inserir manualmente":
                     'Spotify_Link': str(m_spotify),
                     'Status': 'Avaliado',
                     'Colecao': str(m_colecao),
-                    'Ultima_Audicao': str(datetime.date.today())
+                    'Ultima_Audicao': str(datetime.datetime.now(datetime.timezone.utc).date())
                 }])
                 df_atualizado = pd.concat([df_albums, novo_registro], ignore_index=True)
                 salvar_dados_online(df_atualizado)
