@@ -179,13 +179,16 @@ def aplicar_filtros_comuns(df_base, incluir_colecao=False):
         f_ano = st.selectbox("filtrar por ano", ["todos"] + [str(int(a)) for a in anos_disponiveis], key=f"ano_{st.session_state.filtro_aba}")
     with c4:
         f_nota = st.selectbox("filtrar por nota final", ["todos", "1+", "2+", "3+", "4+", "5"], key=f"nota_{st.session_state.filtro_aba}")
-    with c5:
-        f_pesquisa = st.text_input("pesquisa livre", placeholder="disco ou artista...", key=f"pesq_{st.session_state.filtro_aba}")
-    
+        
     f_col = "todos"
     if incluir_colecao:
-        with c6:
+        with c5:
             f_col = st.selectbox("na coleção?", ["todos", "Sim", "Não"], key=f"col_filtro_{st.session_state.filtro_aba}")
+        with c6:
+            f_pesquisa = st.text_input("pesquisa livre", placeholder="disco ou artista...", key=f"pesq_{st.session_state.filtro_aba}")
+    else:
+        with c5:
+            f_pesquisa = st.text_input("pesquisa livre", placeholder="disco ou artista...", key=f"pesq_{st.session_state.filtro_aba}")
 
     df_f = df_base.copy()
     if f_art != "todos":
@@ -369,7 +372,6 @@ elif st.session_state.filtro_aba == "minhas avaliações":
         (df_albums['Cover_Rating'] > 0)
     ].copy()
     
-    # Adicionado o filtro de coleção nesta aba
     df_filtrado = aplicar_filtros_comuns(df_base, incluir_colecao=True)
     st.caption(f"exibindo todos os {len(df_filtrado)} discos avaliados.")
     
